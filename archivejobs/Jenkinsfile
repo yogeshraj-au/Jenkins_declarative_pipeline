@@ -1,22 +1,26 @@
 pipeline {
     agent any
 
-    stages {
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
 
-       stage('Checkout') {
-            checkout([$class: 'GitSCM', branches: [[name: '*/master']], extensions: [], userRemoteConfigs: [[credentialsId: 'd35497e0-4e71-4d20-bdb0-bf32b0ab5ef6', url: 'https://github.com/yogeshraj-au/simple-java-maven']]])
-            }
+    stages {
+        stage('Checkout') {
+             checkout([$class: 'GitSCM', branches: [[name: '*/master']], extensions: [], userRemoteConfigs: [[credentialsId: 'd35497e0-4e71-4d20-bdb0-bf32b0ab5ef6', url: 'https://github.com/yogeshraj-au/simple-java-maven']]])
+         }
 
         stage('Build') {
             steps {
                 mvn 'clean install -DskipTests'
+                archiveArtifacts '**/target/*.*ar'
             }
         }
 
         stage('Unit Test') {
             steps {
                 mvn 'test'
-
             }
         }
 
@@ -26,6 +30,22 @@ pipeline {
             }
         }
     }
+    post {
+        always {
+            // Archive Unit and integration test results, if any
+            junit allowEmptyResults: true,
+                    testResults: '**/target/surefire-reports/TEST-*.xml, **/target/failsafe-reports/*.xml'
+            mailIfStatusChanged env.EMAIL_RECIPIENTS
+        }
+    }
+}
+
+def mailIfStatusChanged(String recipients) {
+    // Also send "back to normal" emails. Mailer seems to check build result, but SUCCESS is not set at this point.
+    if (currentBuild.currentResult == 'SUCCESS') {
+        currentBuild.result = 'SUCCESS'
+    }
+    step([$class: 'Mailer', recipients: recipients])
 }
 
 def mvn(def args) {
